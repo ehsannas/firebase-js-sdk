@@ -1,5 +1,11 @@
 #Unreleased
 
+## 0.9.0
+
+### Minor Changes
+
+- [`e34e98e73`](https://github.com/firebase/firebase-js-sdk/commit/e34e98e73a72f77ee87d9005d6728402129deda9) [#5672](https://github.com/firebase/firebase-js-sdk/pull/5672) (fixes [#76](https://github.com/firebase/firebase-js-sdk/issues/76)) - Adds `getBytes()`, `getStream()` and `getBlob()`, which allow direct file downloads from the SDK.
+
 ## 0.8.7
 
 ### Patch Changes

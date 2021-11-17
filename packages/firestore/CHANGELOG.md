@@ -1,5 +1,11 @@
 # @firebase/firestore
 
+## 3.3.1
+
+### Patch Changes
+
+- [`7a5bc84bd`](https://github.com/firebase/firebase-js-sdk/commit/7a5bc84bd84a8d1b422204f30a59f06d5b60f1bd) [#5717](https://github.com/firebase/firebase-js-sdk/pull/5717) (fixes [#5716](https://github.com/firebase/firebase-js-sdk/issues/5716)) - The SDK no longer accesses IndexedDB during a page unload event on Safari 15. This aims to reduce the occurrence of an IndexedDB bug in Safari (https://bugs.webkit.org/show_bug.cgi?id=226547).
+
 ## 3.3.0
 
 ### Minor Changes
