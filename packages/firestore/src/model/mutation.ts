@@ -214,6 +214,12 @@ export abstract class Mutation {
   abstract readonly fieldTransforms: FieldTransform[];
 }
 
+// TODO(ehsann): Port
+export function calculateOverlayMutation(
+  doc: MutableDocument,
+  mask: FieldMask | null
+): Mutation {}
+
 /**
  * Applies this mutation to the given document for the purposes of computing a
  * new remote document. If the input document doesn't match the expected state
@@ -254,26 +260,39 @@ export function mutationApplyToRemoteDocument(
  * @param document - The document to mutate. The input document can be an
  *     invalid document if the client has no knowledge of the pre-mutation state
  *     of the document.
+ * @param previousMask - The fields that have been updated before applying this mutation.
  * @param localWriteTime - A timestamp indicating the local write time of the
  *     batch this mutation is a part of.
+ * @returns A `FieldMask` representing the fields that are changed by applying this mutation.
  */
 export function mutationApplyToLocalView(
   mutation: Mutation,
   document: MutableDocument,
+  previousMask: FieldMask | null,
   localWriteTime: Timestamp
-): void {
+): FieldMask | null {
   mutationVerifyKeyMatches(mutation, document);
 
   if (mutation instanceof SetMutation) {
-    setMutationApplyToLocalView(mutation, document, localWriteTime);
+    return setMutationApplyToLocalView(
+      mutation,
+      document,
+      previousMask,
+      localWriteTime
+    );
   } else if (mutation instanceof PatchMutation) {
-    patchMutationApplyToLocalView(mutation, document, localWriteTime);
+    return patchMutationApplyToLocalView(
+      mutation,
+      document,
+      previousMask,
+      localWriteTime
+    );
   } else {
     debugAssert(
       mutation instanceof DeleteMutation,
       'Unexpected mutation type: ' + mutation
     );
-    deleteMutationApplyToLocalView(mutation, document);
+    return deleteMutationApplyToLocalView(mutation, document, previousMask);
   }
 }
 
@@ -408,12 +427,13 @@ function setMutationApplyToRemoteDocument(
 function setMutationApplyToLocalView(
   mutation: SetMutation,
   document: MutableDocument,
+  previousMask: FieldMask | null,
   localWriteTime: Timestamp
-): void {
+): FieldMask | null {
   if (!preconditionIsValidForDocument(mutation.precondition, document)) {
     // The mutation failed to apply (e.g. a document ID created with add()
     // caused a name collision).
-    return;
+    return previousMask;
   }
 
   const newData = mutation.value.clone();
@@ -426,6 +446,8 @@ function setMutationApplyToLocalView(
   document
     .convertToFoundDocument(getPostMutationVersion(document), newData)
     .setHasLocalMutations();
+  // SetMutation overwrites all fields.
+  return null;
 }
 
 /**
@@ -485,10 +507,11 @@ function patchMutationApplyToRemoteDocument(
 function patchMutationApplyToLocalView(
   mutation: PatchMutation,
   document: MutableDocument,
+  previousMask: FieldMask | null,
   localWriteTime: Timestamp
-): void {
+): FieldMask | null {
   if (!preconditionIsValidForDocument(mutation.precondition, document)) {
-    return;
+    return previousMask;
   }
 
   const transformResults = localTransformResults(
@@ -502,6 +525,17 @@ function patchMutationApplyToLocalView(
   document
     .convertToFoundDocument(getPostMutationVersion(document), newData)
     .setHasLocalMutations();
+
+  if (previousMask === null) {
+    return null;
+  }
+
+  let mergedMaskSet = new Set<FieldPath>(previousMask.fields);
+  mutation.fieldMask.fields.forEach(fieldPath => mergedMaskSet.add(fieldPath));
+  mutation.fieldTransforms
+    .map(transform => transform.field)
+    .forEach(fieldPath => mergedMaskSet.add(fieldPath));
+  return new FieldMask(Array.from(mergedMaskSet));
 }
 
 /**
@@ -565,8 +599,7 @@ function serverTransformResults(
  * @param fieldTransforms - The field transforms to apply the result to.
  * @param localWriteTime - The local time of the mutation (used to
  *     generate ServerTimestampValues).
- * @param mutableDocument - The current state of the document after applying all
- *     previous mutations.
+ * @param mutableDocument - The document to apply transforms on.
  * @returns The transform results list.
  */
 function localTransformResults(
@@ -621,8 +654,9 @@ function deleteMutationApplyToRemoteDocument(
 
 function deleteMutationApplyToLocalView(
   mutation: DeleteMutation,
-  document: MutableDocument
-): void {
+  document: MutableDocument,
+  previousMask: FieldMask | null
+): FieldMask | null {
   debugAssert(
     document.key.isEqual(mutation.key),
     'Can only apply mutation to document with same key'
@@ -631,7 +665,9 @@ function deleteMutationApplyToLocalView(
     // We don't call `setHasLocalMutations()` since we want to be backwards
     // compatible with the existing SDK behavior.
     document.convertToNoDocument(SnapshotVersion.min());
+    return null;
   }
+  return previousMask;
 }
 
 /**

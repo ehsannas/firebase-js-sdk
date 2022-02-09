@@ -36,6 +36,7 @@ import {
   mutationEquals,
   MutationResult
 } from './mutation';
+import { FieldMask } from './field_mask';
 
 /**
  * A batch of mutations that will be sent as one unit to the backend.
@@ -89,28 +90,55 @@ export class MutationBatch {
       }
     }
   }
+  /**
+   * Computes the local view of a document given all the mutations in this
+   * batch.
+   *
+   * @param document - The document to apply mutations to.
+   * @returns A `FieldMask` representing all the fields that are mutated.
+   */
+  applyToLocalView(document: MutableDocument): FieldMask | null {
+    let mutatedFields = new FieldMask([]);
+    return this.applyToLocalViewWithFieldMask(document, mutatedFields);
+  }
 
   /**
    * Computes the local view of a document given all the mutations in this
    * batch.
    *
    * @param document - The document to apply mutations to.
+   * @param mutatedFields - Fields that have been updated before applying this mutation batch.
+   * @returns A `FieldMask` representing all the fields that are mutated.
    */
-  applyToLocalView(document: MutableDocument): void {
+  applyToLocalViewWithFieldMask(
+    document: MutableDocument,
+    mutatedFields: FieldMask | null
+  ): FieldMask | null {
     // First, apply the base state. This allows us to apply non-idempotent
     // transform against a consistent set of values.
     for (const mutation of this.baseMutations) {
       if (mutation.key.isEqual(document.key)) {
-        mutationApplyToLocalView(mutation, document, this.localWriteTime);
+        mutatedFields = mutationApplyToLocalView(
+          mutation,
+          document,
+          mutatedFields,
+          this.localWriteTime
+        );
       }
     }
 
     // Second, apply all user-provided mutations.
     for (const mutation of this.mutations) {
       if (mutation.key.isEqual(document.key)) {
-        mutationApplyToLocalView(mutation, document, this.localWriteTime);
+        mutatedFields = mutationApplyToLocalView(
+          mutation,
+          document,
+          mutatedFields,
+          this.localWriteTime
+        );
       }
     }
+    return mutatedFields;
   }
 
   /**
